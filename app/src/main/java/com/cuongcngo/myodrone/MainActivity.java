@@ -19,6 +19,7 @@ import android.support.design.widget.Snackbar;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.View;
 import android.view.Menu;
@@ -86,6 +87,8 @@ public class MainActivity extends AppCompatActivity
     private boolean droneReady = false;
     private boolean myoReady = false;
 
+
+
     private DeviceListener mListener = new AbstractDeviceListener() {
         @Override
         public void onConnect(Myo myo, long timestamp) {
@@ -94,12 +97,23 @@ public class MainActivity extends AppCompatActivity
             myoReady = true;
 
             onDeviceReady();
+
+//            Intent intent = new Intent(mContext, ControlActivity.class);
+//            mContext.startActivity(intent);
         }
 
         @Override
         public void onDisconnect(Myo myo, long timestamp) {
             Toast.makeText(mContext, "Myo Disconnected!", Toast.LENGTH_SHORT).show();
+            appendOutput("Myo Disconnected!");
             myoReady = false;
+        }
+
+        @Override
+        public void onPose(Myo myo, long timestamp, Pose pose) {
+            Toast.makeText(mContext, "Pose: " + pose, Toast.LENGTH_SHORT).show();
+            appendOutput("Pose: " + pose);
+            //TODO: Do something awesome.
         }
     };
 
@@ -127,18 +141,13 @@ public class MainActivity extends AppCompatActivity
             e.printStackTrace();
         }
 
-        Hub hub = Hub.getInstance();
-        if (!hub.init(this)) {
-            appendOutput("Could not initialize the Hub.");
-            finish();
-            return;
-        }
-
         outputText = (TextView)findViewById(R.id.output_text);
+        outputText.setMovementMethod(new ScrollingMovementMethod());
         btnConnectMyo = (Button)findViewById(R.id.btn_connect_myo);
 
-        //Hub.getInstance().setLockingPolicy(Hub.LockingPolicy.NONE);
-        Hub.getInstance().addListener(mListener);
+        Hub.getInstance().setLockingPolicy(Hub.LockingPolicy.NONE);
+
+
 
     }
 
@@ -146,6 +155,18 @@ public class MainActivity extends AppCompatActivity
         if(outputText != null) {
             outputText.append("\n");
             outputText.append(cs);
+
+            if(outputText.getLayout() != null) {
+                // find the amount we need to scroll.  This works by
+                // asking the TextView's internal layout for the position
+                // of the final line and then subtracting the TextView's height
+                final int scrollAmount = outputText.getLayout().getLineTop(outputText.getLineCount()) - outputText.getHeight();
+                // if there is no need to scroll, scrollAmount will be <=0
+                if (scrollAmount > 0)
+                    outputText.scrollTo(0, scrollAmount);
+                else
+                    outputText.scrollTo(0, 0);
+            }
         }
         Log.d(TAG, cs.toString());
     }
@@ -201,8 +222,21 @@ public class MainActivity extends AppCompatActivity
     {
         super.onPause();
 
+        if (mService != null) {
+            mService.pause();
+        }
+
         unregisterReceivers();
         stopTasks();
+
+        Hub hub = Hub.getInstance();
+        if (!hub.init(this)) {
+            appendOutput("Could not initialize the Hub.");
+            finish();
+            return;
+        }
+
+        Hub.getInstance().removeListener(mListener);
     }
 
     public void onDroneBatteryChanged(int value) {
@@ -223,6 +257,16 @@ public class MainActivity extends AppCompatActivity
         disableAllButtons();
 
         checkDroneConnectivity();
+
+        Hub hub = Hub.getInstance();
+        if (!hub.init(this)) {
+            appendOutput("Could not initialize the Hub.");
+            finish();
+            return;
+        }
+
+        Hub.getInstance().addListener(mListener);
+        Hub.getInstance().setLockingPolicy(Hub.LockingPolicy.NONE);
     }
 
 
@@ -283,24 +327,24 @@ public class MainActivity extends AppCompatActivity
             appendOutput("AR.Drone connection [ON NETWORK]");
             this.droneOnNetwork = droneOnNetwork;
 
-            Handler handler = new Handler();
-            handler.postDelayed(new Runnable() {
-                public void run() {
-                    if (mService != null) {
-                        mService.triggerTakeOff();
-                        appendOutput("About to take off");
-                        try {
-                            Thread.sleep(10000, 0);
-                            mService.triggerTakeOff();
-                        }
-                        catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                    }
-
-                    appendOutput("mService not available");
-                }
-            }, 1000);
+//            Handler handler = new Handler();
+//            handler.postDelayed(new Runnable() {
+//                public void run() {
+//                    if (mService != null) {
+//                        mService.triggerTakeOff();
+//                        appendOutput("About to take off");
+//                        try {
+//                            Thread.sleep(10000, 0);
+//                            mService.triggerTakeOff();
+//                        }
+//                        catch (InterruptedException e) {
+//                            e.printStackTrace();
+//                        }
+//                    }
+//
+//                    appendOutput("mService not available");
+//                }
+//            }, 1000);
 
         } else {
 //            Log.d(TAG, "AR.Drone connection [DISCONNECTED]");
@@ -350,10 +394,12 @@ public class MainActivity extends AppCompatActivity
     {
         appendOutput("DroneService CONNECTED");
         mService = (DroneService)((DroneControlService.LocalBinder) service).getService();
-        mService.setMagnetoEnabled(true);
 
-        if(mService != null)
+
+        if(mService != null) {
             mService.requestDroneStatus();
+            mService.resume();
+        }
     }
 
 
