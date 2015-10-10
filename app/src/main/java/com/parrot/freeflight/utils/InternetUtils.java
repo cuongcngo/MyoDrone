@@ -10,12 +10,12 @@ import android.content.Context;
 import android.os.Looper;
 import android.util.Log;
 
-import com.example.flight.paracam.R;
+import com.cuongcngo.myodrone.R;
 
 public final class InternetUtils
 {
 	private static final String TAG = InternetUtils.class.getSimpleName();
-
+;
 	
 	public static boolean isOnline(Context context)
 	{

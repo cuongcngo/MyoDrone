@@ -11,7 +11,7 @@ import android.provider.MediaStore.Images;
 import android.provider.MediaStore.Video;
 import android.util.Log;
 
-import com.example.flight.paracam.R;
+import com.cuongcngo.myodrone.R;
 
 public final class ShareUtils
 {
