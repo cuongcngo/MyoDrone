@@ -12,6 +12,7 @@ import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
@@ -69,6 +70,7 @@ public class MainActivity extends AppCompatActivity
     private Context mContext = this;
 
     private TextView outputText;
+    private Button btnConnectMyo;
 
     private DroneService mService;
     private DroneBatteryChangedReceiver droneBatteryReceiver;
@@ -88,7 +90,10 @@ public class MainActivity extends AppCompatActivity
         @Override
         public void onConnect(Myo myo, long timestamp) {
             Toast.makeText(mContext, "Myo Connected!", Toast.LENGTH_SHORT).show();
+            appendOutput("Myo Connected!");
             myoReady = true;
+
+            onDeviceReady();
         }
 
         @Override
@@ -124,39 +129,48 @@ public class MainActivity extends AppCompatActivity
 
         Hub hub = Hub.getInstance();
         if (!hub.init(this)) {
-            Log.e(TAG, "Could not initialize the Hub.");
+            appendOutput("Could not initialize the Hub.");
             finish();
             return;
         }
 
-        outputText = (TextView)findViewById(R.id.textView);
-
-        Intent intent = new Intent(mContext, ScanActivity.class);
-        mContext.startActivity(intent);
+        outputText = (TextView)findViewById(R.id.output_text);
+        btnConnectMyo = (Button)findViewById(R.id.btn_connect_myo);
 
         //Hub.getInstance().setLockingPolicy(Hub.LockingPolicy.NONE);
-        //Hub.getInstance().addListener(mListener);
+        Hub.getInstance().addListener(mListener);
+
+    }
+
+    private void appendOutput(CharSequence cs) {
+        if(outputText != null) {
+            outputText.append("\n");
+            outputText.append(cs);
+        }
+        Log.d(TAG, cs.toString());
     }
 
     protected void initBroadcastReceivers()
     {
+        appendOutput("initializing receivers");
         droneStateReceiver = new DroneAvailabilityReceiver(this);
         networkChangeReceiver = new NetworkChangeReceiver(this);
         droneConnectionChangeReceiver = new DroneConnectionChangedReceiver(this);
         droneReadyReceiver = new DroneReadyReceiver(this);
         droneBatteryReceiver = new DroneBatteryChangedReceiver(this);
-        LocalBroadcastManager localBroadcastMgr = LocalBroadcastManager.getInstance(getApplicationContext());
-        localBroadcastMgr.registerReceiver(droneBatteryReceiver, new IntentFilter(DroneControlService.DRONE_BATTERY_CHANGED_ACTION));
     }
 
     private void registerBroadcastReceivers()
     {
+        appendOutput("registering receivers");
         LocalBroadcastManager broadcastManager = LocalBroadcastManager.getInstance(getApplicationContext());
+        //LocalBroadcastManager broadcastManager = LocalBroadcastManager.getInstance(this);
         broadcastManager.registerReceiver(droneStateReceiver, new IntentFilter(
                 DroneStateManager.ACTION_DRONE_STATE_CHANGED));
 
         broadcastManager.registerReceiver(droneConnectionChangeReceiver, new IntentFilter(DroneControlService.DRONE_CONNECTION_CHANGED_ACTION));
         broadcastManager.registerReceiver(droneReadyReceiver, new IntentFilter(DroneControlService.DRONE_STATE_READY_ACTION));
+        broadcastManager.registerReceiver(droneBatteryReceiver, new IntentFilter(DroneControlService.DRONE_BATTERY_CHANGED_ACTION));
 
         registerReceiver(networkChangeReceiver, new IntentFilter(WifiManager.NETWORK_STATE_CHANGED_ACTION));
     }
@@ -164,10 +178,12 @@ public class MainActivity extends AppCompatActivity
 
     private void unregisterReceivers()
     {
+        appendOutput("UNregistering receivers");
         LocalBroadcastManager broadcastManager = LocalBroadcastManager.getInstance(getApplicationContext());
         broadcastManager.unregisterReceiver(droneStateReceiver);
         broadcastManager.unregisterReceiver(droneConnectionChangeReceiver);
         broadcastManager.unregisterReceiver(droneReadyReceiver);
+        broadcastManager.unregisterReceiver(droneBatteryReceiver);
         unregisterReceiver(networkChangeReceiver);
     }
 
@@ -229,7 +245,7 @@ public class MainActivity extends AppCompatActivity
 
     public void onNetworkChanged(NetworkInfo info)
     {
-        Log.d(TAG, "Network state has changed. State is: " + (info.isConnected() ? "CONNECTED" : "DISCONNECTED"));
+        appendOutput("Network state has changed. State is: " + (info.isConnected() ? "CONNECTED" : "DISCONNECTED"));
         if (mService != null && info.isConnected()) {
             checkDroneConnectivity();
         } else {
@@ -237,11 +253,17 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    public void connectMyo(View v) {
+        appendOutput("connect myo button clicked");
+        Intent intent = new Intent(mContext, ScanActivity.class);
+        mContext.startActivity(intent);
+    }
 
     public void onDroneConnected()
     {
         if (mService != null) {
 //            mService.pause();
+            appendOutput("Drone connected.");
 
             mService.requestConfigUpdate();
         }
@@ -258,26 +280,46 @@ public class MainActivity extends AppCompatActivity
     {
         if (droneOnNetwork) {
 //            Log.d(TAG, "AR.Drone connection [CONNECTED]");
-            Log.d(TAG, "AR.Drone connection [ON NETWORK]");
+            appendOutput("AR.Drone connection [ON NETWORK]");
             this.droneOnNetwork = droneOnNetwork;
+
+            Handler handler = new Handler();
+            handler.postDelayed(new Runnable() {
+                public void run() {
+                    if (mService != null) {
+                        mService.triggerTakeOff();
+                        appendOutput("About to take off");
+                        try {
+                            Thread.sleep(10000, 0);
+                            mService.triggerTakeOff();
+                        }
+                        catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                    appendOutput("mService not available");
+                }
+            }, 1000);
 
         } else {
 //            Log.d(TAG, "AR.Drone connection [DISCONNECTED]");
-            Log.d(TAG, "AR.Drone connection [NOT ON NETWORK]");
+            appendOutput("AR.Drone connection [NOT ON NETWORK]");
         }
     }
 
     public void onDroneReady() {
         // TODO
-        Log.d(TAG, "Drone is READYYYYYYYYYYYYYYYYYYYYY");
+        appendOutput("Drone is ready.");
         droneReady = true;
 
-        onDeviceReady();
+        //onDeviceReady();
     }
 
     private void onDeviceReady() {
         if(myoReady && droneReady) {
-            
+            Intent intent = new Intent(mContext, ControlActivity.class);
+            mContext.startActivity(intent);
         }
     }
 
@@ -306,7 +348,7 @@ public class MainActivity extends AppCompatActivity
 
     public void onServiceConnected(ComponentName name, IBinder service)
     {
-        Log.d(TAG, "DroneService CONNECTED");
+        appendOutput("DroneService CONNECTED");
         mService = (DroneService)((DroneControlService.LocalBinder) service).getService();
         mService.setMagnetoEnabled(true);
 
