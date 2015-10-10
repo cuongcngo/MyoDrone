@@ -7,19 +7,17 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.net.wifi.WifiManager;
-import android.os.AsyncTask;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentTransaction;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.Surface;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -40,14 +38,9 @@ import com.parrot.freeflight.receivers.DroneVideoRecordStateReceiverDelegate;
 import com.parrot.freeflight.receivers.DroneVideoRecordingStateReceiver;
 import com.parrot.freeflight.receivers.WifiSignalStrengthChangedReceiver;
 import com.parrot.freeflight.receivers.WifiSignalStrengthReceiverDelegate;
-import com.parrot.freeflight.remotecontrollers.ControlButtonsFactory;
-import com.parrot.freeflight.sensors.DeviceOrientationChangeDelegate;
-import com.parrot.freeflight.sensors.DeviceOrientationManager;
-import com.parrot.freeflight.sensors.DeviceSensorManagerWrapper;
 import com.parrot.freeflight.service.DroneControlService;
 import com.parrot.freeflight.settings.ApplicationSettings;
 import com.parrot.freeflight.transcodeservice.TranscodingService;
-import com.parrot.freeflight.utils.NookUtils;
 import com.thalmic.myo.AbstractDeviceListener;
 import com.thalmic.myo.DeviceListener;
 import com.thalmic.myo.Hub;
@@ -59,7 +52,7 @@ import com.thalmic.myo.XDirection;
 import java.io.File;
 
 public class ControlActivity extends AppCompatActivity
-        implements DeviceOrientationChangeDelegate, WifiSignalStrengthReceiverDelegate, DroneVideoRecordStateReceiverDelegate, DroneEmergencyChangeReceiverDelegate,
+        implements /*DeviceOrientationChangeDelegate, */WifiSignalStrengthReceiverDelegate, DroneVideoRecordStateReceiverDelegate, DroneEmergencyChangeReceiverDelegate,
         DroneBatteryChangedReceiverDelegate, DroneFlyingStateReceiverDelegate, DroneCameraReadyActionReceiverDelegate, DroneRecordReadyActionReceiverDelegate
 {
 
@@ -185,6 +178,7 @@ public class ControlActivity extends AppCompatActivity
             Toast.makeText(mContext, "Myo Disconnected!", Toast.LENGTH_SHORT).show();
         }
 
+
         @Override
         public void onPose(Myo myo, long timestamp, Pose pose) {
             Toast.makeText(mContext, "Pose test: " + pose, Toast.LENGTH_SHORT).show();
@@ -192,17 +186,7 @@ public class ControlActivity extends AppCompatActivity
             //TODO: Do something awesome.
 
 
-            if (pose == Pose.FIST) {
-                mService.setProgressiveCommandEnabled(true);
-                mService.setProgressiveCommandCombinedYawEnabled(true);
-            } else if (pose == Pose.FINGERS_SPREAD) {
-                mService.setProgressiveCommandEnabled(true);
-                mService.setProgressiveCommandCombinedYawEnabled(false);
-            }
 
-            if(pose != Pose.FINGERS_SPREAD) {
-                mService.setGaz(0);
-            }
 
             switch (pose) {
                 case FINGERS_SPREAD:
@@ -220,6 +204,7 @@ public class ControlActivity extends AppCompatActivity
 
             prevPose = pose;
         }
+
 
         @Override
         public void onOrientationData(Myo myo, long timestamp, Quaternion rotation) {
@@ -240,6 +225,7 @@ public class ControlActivity extends AppCompatActivity
 
         }
 
+
     };
 
     private boolean stopThread = false;
@@ -249,14 +235,35 @@ public class ControlActivity extends AppCompatActivity
     private Runnable messenger = new Runnable() {
         @Override
         public void run() {
+            Pose lastThreadPose = Pose.REST;
+
             while(!stopThread) {
                 if(threadCanRun && mService != null && prevPose != null) {
+                    if(prevPose != lastThreadPose) {
+                        if (prevPose == Pose.FIST) {
+                            mService.setProgressiveCommandEnabled(true);
+                            mService.setProgressiveCommandCombinedYawEnabled(true);
+                        } else if (prevPose == Pose.FINGERS_SPREAD) {
+                            mService.setProgressiveCommandEnabled(false);
+                            mService.setProgressiveCommandCombinedYawEnabled(false);
+                        }
+
+                        if (prevPose != Pose.FINGERS_SPREAD) {
+                            mService.setGaz(0);
+                        }
+                        if (prevPose != Pose.FIST) {
+                            mService.setPitch(0.0f);
+                            mService.setRoll(0.0f);
+                            mService.setYaw(0.0f);
+                        }
+                    }
+
                     switch(prevPose) {
 
                         case FIST:
-                            float dPitch = (prevPitch - startingPitch)/60;
+                            float dPitch = (prevPitch - startingPitch)/90;
                             dPitch = Math.max(Math.min(1, dPitch), -1);
-                            float dYaw = (prevYaw - startingYaw)/60;
+                            float dYaw = (prevYaw - startingYaw)/90;
                             dYaw = Math.max(Math.min(1, dYaw), -1);
                             float dRoll = prevRoll - startingRoll;
                             if(dRoll < -180) {
@@ -285,6 +292,8 @@ public class ControlActivity extends AppCompatActivity
                             break;
                     }
                 }
+
+                lastThreadPose = prevPose;
 
                 try {
                     Thread.sleep(10, 0);
@@ -419,6 +428,50 @@ public class ControlActivity extends AppCompatActivity
         if (messengerThread != null && !messengerThread.isAlive()) {
             messengerThread.start();
         }
+
+        /*
+        android.os.Handler h = new android.os.Handler();
+
+        h.post(new Runnable() {
+            @Override
+            public void run() {
+                if(mService != null) {
+                    mService.triggerTakeOff();
+
+                    try {
+                        Thread.sleep(6000, 0);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    mService.setProgressiveCommandEnabled(true);
+                    mService.setProgressiveCommandCombinedYawEnabled(true);
+                    //mService.setRoll(0.4f);
+                    //mService.setPitch(0.4f);
+                    mService.setGaz(0.5f);
+                    mService.setRoll(0.4f);
+
+                    try {
+                        Thread.sleep(3000, 0);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    //mService.setRoll(-0.4f);
+                    //mService.setPitch(-0.4f);
+                    mService.setGaz(-0.5f);
+                    mService.setRoll(-0.4f);
+
+                    try {
+                        Thread.sleep(2000, 0);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    mService.triggerTakeOff();
+                }
+            }
+        });
+        */
     }
 
 
@@ -578,6 +631,7 @@ public class ControlActivity extends AppCompatActivity
         }
     }
 
+    /*
     public void onDeviceOrientationChanged(float[] orientation, float magneticHeading, int magnetoAccuracy)
     {
         if (mService == null) {
@@ -631,6 +685,7 @@ public class ControlActivity extends AppCompatActivity
             }
         }
     }
+    */
 
     private boolean isLowOnDiskSpace()
     {
